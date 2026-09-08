@@ -1,32 +1,50 @@
-# Zoom VideoSDK iOS Screen Share and Annotation Demo
+# Interactive Virtual Classroom with Screen Sharing & Real-Time Annotation Demo
+
+A UIKit sample for building an interactive iOS classroom with the Zoom Video SDK. Teachers and students can join the same live session, share classroom content, collaborate with real-time annotations, and see participant presence as it changes.
 
 Use of this sample app is subject to our [Terms of Use](https://explore.zoom.us/en/video-sdk-terms/).
 
-The Zoom Video SDK for iOS lets you build custom video meeting applications with access to raw video and audio data, enabling highly-interactive, custom user experiences. This repository contains a completed sample app written in Swift with UIKit.
+## Start / Join View
 
-## Screenshots
+The entry screen collects a display name and class code before joining a classroom. It includes student and teacher-oriented entry states, keyboard-safe form handling, and JWT-based Video SDK authentication.
 
-<p>Start View</p>
-<img src="https://github.com/user-attachments/assets/37eb5100-9e64-4f10-85e4-6de4ea602638" width="320">
-<img src="https://github.com/user-attachments/assets/f74bf949-5c38-4e5f-a6f6-2946e7227132" width="320">
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/1c4e39ab-81fa-4d45-b93c-1a2676f6ba8c" width="320">
+</p>
 
-<br><br>
+## In-Class View
 
-<p>Session View</p>
-<img src="https://github.com/user-attachments/assets/9cc889d1-2058-46ec-93b5-859c87f5bbd9" width="320">
-<img src="https://github.com/user-attachments/assets/7f8a1894-b178-4ed0-aa31-7760fdc31b0b" width="320">
+After joining, the classroom displays local and remote video tiles, a compact local preview during content sharing, audio/video controls, and a live participant list.
 
-<br>
+Participants are labelled as Teacher when Zoom identifies them as a host or manager; everyone else is shown as a Student.
 
-<img src="https://github.com/user-attachments/assets/a4cba592-f90f-481a-aff4-6855d3cda157" width="640">
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/dceaf32a-ff15-42d5-8cb6-8a9ebb995b1c" width="320">
+  <img src="https://github.com/user-attachments/assets/e1f229d2-dfd4-4841-9efd-87ab0674f3c4" width="320">
+</p>
+
+## Screen Sharing and Annotation View
+
+Users can share the app through in-app screen sharing or present one of the included algebra lesson PDFs. The floating annotation controls provide pens, highlighters, arrows, erasers, colour selection, undo, redo, and clear-all actions.
+
+The app temporarily disables conflicting PDF and share-view gestures while annotating, then restores navigation when annotation ends.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/fd8cd631-a22f-4ffb-a7fa-8d5f32b47537" width="320">
+  <img src="https://github.com/user-attachments/assets/eb1d13a8-9a66-405b-ba73-6bb17bffcdfb" width="320">
+</p>
 
 ## Features
 This repository demonstrates the basic capabilities of the Video SDK.
-- Creating/joining a session
-- Starting/stopping video
-- Muting/unmuting audio
-- Screen share using InAppScreenShare
-- Annotation on top of the shared screen (local user and remote user)
+- Zoom Video SDK session join and leave flow
+- JWT-based session authentication
+- Student and teacher classroom entry UI
+- Local and remote video rendering
+- Audio mute/unmute controls
+- Video start/stop controls
+- Live participant roster with role, audio, and video status
+- In-app screen sharing and PDF lesson sharing with bundled algebra handouts
+- Real-time Zoom annotations with Pen, highlighter, arrow, and eraser tools. Participants can also annotation with different colour along with undo, redo, and clear-all annotation actions
 
 ## Need Help?
 If you're looking for help, try Developer Support or our Developer Forums. Priority support is also available with Zoom Premier Developer Support plans.
