@@ -546,76 +546,167 @@ extension SessionViewController {
     
     @objc func toggleDraw() {
         guard let shareHelper = ZoomVideoSDK.shareInstance()?.getShareHelper() else { return }
-        
         shareHelper.disableViewerAnnotation(false)
-        
+
         guard shareHelper.isAnnotationFeatureSupport(), !shareHelper.isViewerAnnotationDisabled() else {
             showError(message: "Annotation is not supported", dismiss: false)
             return
         }
-        
-        if annotationHelper != nil {
-            shareHelper.destroy(annotationHelper)
-        }
-        
-        if shareHelper.isSharingOut() {
-            guard sharedPDFView.document != nil else {
-                showError(message: "Select a PDF first.", dismiss: false)
+
+        // Stopping must use the active helper. Recreating it here loses the active
+        // annotation canvas and leaves its gestures attached to the share view.
+        if annotationStarted {
+            guard let annotationHelper = annotationHelper else {
+                resetAnnotationUI(shareHelper: shareHelper)
                 return
             }
-            annotationHelper = shareHelper.createAnnotationHelper(nil) // Nil for self sharing as mentioned for shareHelper.createAnnotationHelper
-        } else if shareHelper.isOtherSharing() {
-            annotationHelper = shareHelper.createAnnotationHelper(sharerView)
+            let error = annotationHelper.stopAnnotation()
+            if error == .Errors_Success {
+                shareHelper.destroy(annotationHelper)
+                self.annotationHelper = nil
+                resetAnnotationUI(shareHelper: shareHelper)
+            } else {
+                showError(message: "Unable to stop annotation.", dismiss: false)
+            }
+            return
         }
-        
+
+        guard let chosenShareType = chosenShareType else {
+            showError(message: "Start sharing before annotating.", dismiss: false)
+            return
+        }
+
+        let isLocalShare = shareHelper.isSharingOut()
+        let isRemoteShare = shareHelper.isOtherSharing()
+        guard isLocalShare || isRemoteShare else {
+            showError(message: "Start sharing before annotating.", dismiss: false)
+            return
+        }
+
+        switch chosenShareType {
+        case .InAppScreenShare:
+            // An in-app screen share has no PDF requirement. The SDK creates the
+            // local helper with nil; the visible app view is supplied below.
+            annotationHelper = isLocalShare
+                ? shareHelper.createAnnotationHelper(nil)
+                : shareHelper.createAnnotationHelper(sharerView)
+        case .ShareWithView:
+            guard isLocalShare, sharedPDFView.document != nil else {
+                showError(message: "Select a PDF before annotating.", dismiss: false)
+                return
+            }
+            annotationHelper = shareHelper.createAnnotationHelper(nil)
+        }
+
         guard let annotationHelper = annotationHelper else {
             showError(message: "You are not allowed to annotate", dismiss: false)
             return
         }
-        
-        if annotationStarted {
-            let error = annotationHelper.stopAnnotation()
-            if error == .Errors_Success {
-                // Removing the helper releases its gesture-catching annotation overlay so PDFKit
-                // can receive pinch and pan gestures again after annotation is dismissed.
+
+        // Capture existing share-view zoom recognizers before the annotation
+        // overlay is added. The SDK's overlay is added afterwards, so its pencil
+        // gestures remain enabled while double-tap/pinch zoom is suppressed.
+        setShareZoomGesturesEnabled(false)
+
+        // Capture PDFKit's navigation gestures before the SDK adds its drawing
+        // overlay. This prevents pinch/pan from competing with pencil strokes.
+        if case .ShareWithView = chosenShareType {
+            setPDFNavigationEnabled(false)
+        }
+
+        guard annotationHelper.startAnnotation() == .Errors_Success else {
+            setPDFNavigationEnabled(true)
+            setShareZoomGesturesEnabled(true)
+            shareHelper.destroy(annotationHelper)
+            self.annotationHelper = nil
+            showError(message: "Unable to start annotation.", dismiss: false)
+            return
+        }
+
+        if case .InAppScreenShare = chosenShareType {
+            // setAnnotationView must receive the top-level view that is actually
+            // being shared. sharedPDFView is hidden during an in-app screen share.
+            let annotationView = isLocalShare ? view : sharerView
+            guard shareHelper.setAnnotationView(annotationView) == .Errors_Success else {
+                _ = annotationHelper.stopAnnotation()
                 shareHelper.destroy(annotationHelper)
                 self.annotationHelper = nil
-                if case .InAppScreenShare? = chosenShareType {
-                    shareHelper.setAnnotationView(nil)
-                }
-                setPDFNavigationEnabled(true)
-                shareDrawBtn.setImage(UIImage(systemName: "pencil")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 30, weight: .regular)), for: .normal)
-                annotationStarted = false
-                annotationPanel.isHidden = true
+                setShareZoomGesturesEnabled(true)
+                showError(message: "Unable to attach annotation to the shared screen.", dismiss: false)
+                return
             }
-        } else {
-            let error = annotationHelper.startAnnotation()
-            if error == .Errors_Success {
-                var errorInAppAnnotationResult: ZoomVideoSDKError?
-                switch chosenShareType {
-                case .InAppScreenShare:
-                    if (shareHelper.isSharingOut()) {
-                        errorInAppAnnotationResult = shareHelper.setAnnotationView(sharedPDFView)
-                    } else {
-                        errorInAppAnnotationResult = shareHelper.setAnnotationView(sharerView)
-                    }
-                    if errorInAppAnnotationResult == .Errors_Success {
-                        shareDrawBtn.setImage(UIImage(systemName: "pencil.slash")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 30, weight: .regular)), for: .normal)
-                    } else {
-                        print("Fail to set annotation")
-                    }
-                case .ShareWithView:
-                    shareDrawBtn.setImage(UIImage(systemName: "pencil.slash")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 30, weight: .regular)), for: .normal)
-                default:
-                    return
-                }
-                annotationStarted = true
-                setPDFNavigationEnabled(false)
-                selectedAnnotationColor = .systemRed
-                annotationPanel.isHidden = false
-                selectAnnotationTool(0)
-            } else {
-                print("Fail to start annotation")
+        }
+
+        annotationStarted = true
+        shareDrawBtn.setImage(UIImage(systemName: "pencil.slash")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 30, weight: .regular)), for: .normal)
+        selectedAnnotationColor = .systemRed
+        annotationPanel.isHidden = false
+        // The in-app annotation canvas is added to the root view by the SDK.
+        // Raise app controls after it has been installed so the canvas does not
+        // swallow the pencil toggle or palette touches.
+        bringAnnotationControlsToFront()
+        DispatchQueue.main.async { [weak self] in
+            self?.setShareZoomGesturesEnabled(false)
+            self?.bringAnnotationControlsToFront()
+        }
+        selectAnnotationTool(0)
+    }
+
+    private func bringAnnotationControlsToFront() {
+        view.bringSubviewToFront(sessionHeader)
+        view.bringSubviewToFront(localViewDuringShare)
+        view.bringSubviewToFront(shareBtnStackView)
+        view.bringSubviewToFront(annotationPanel)
+        view.bringSubviewToFront(participantsPanel)
+        view.bringSubviewToFront(tabBar)
+    }
+
+    func resetAnnotationUI(shareHelper: ZoomVideoSDKShareHelper) {
+        if let annotationHelper = annotationHelper {
+            if annotationStarted {
+                _ = annotationHelper.stopAnnotation()
+            }
+            shareHelper.destroy(annotationHelper)
+            self.annotationHelper = nil
+        }
+        if case .InAppScreenShare? = chosenShareType {
+            shareHelper.setAnnotationView(nil)
+        }
+        setPDFNavigationEnabled(true)
+        setShareZoomGesturesEnabled(true)
+        annotationStarted = false
+        annotationPanel.isHidden = true
+        shareDrawBtn.setImage(UIImage(systemName: "pencil")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 30, weight: .regular)), for: .normal)
+    }
+
+    private func setShareZoomGesturesEnabled(_ enabled: Bool) {
+        if enabled {
+            disabledAnnotationZoomGestures.forEach { $0.isEnabled = true }
+            disabledAnnotationZoomGestures.removeAll()
+            return
+        }
+
+        let contentViews = [scrollView, sharerView, sharedPDFView]
+        let detectedZoomGestures = contentViews.flatMap { zoomGestures(in: $0) }
+        let newZoomGestures = uniqueGestures(detectedZoomGestures).filter { candidate in
+            !disabledAnnotationZoomGestures.contains(where: { $0 === candidate })
+        }
+        disabledAnnotationZoomGestures.append(contentsOf: newZoomGestures)
+        newZoomGestures.forEach { $0.isEnabled = false }
+    }
+
+    private func zoomGestures(in view: UIView) -> [UIGestureRecognizer] {
+        let localGestures = (view.gestureRecognizers ?? []).filter { gesture in
+            gesture is UIPinchGestureRecognizer ||
+            (gesture as? UITapGestureRecognizer)?.numberOfTapsRequired ?? 0 > 1
+        }
+        return localGestures + view.subviews.flatMap { zoomGestures(in: $0) }
+    }
+
+    private func uniqueGestures(_ gestures: [UIGestureRecognizer]) -> [UIGestureRecognizer] {
+        gestures.reduce(into: []) { unique, gesture in
+            if !unique.contains(where: { $0 === gesture }) {
+                unique.append(gesture)
             }
         }
     }
@@ -624,10 +715,15 @@ extension SessionViewController {
         if enabled {
             disabledPDFNavigationGestures.forEach { $0.isEnabled = true }
             disabledPDFNavigationGestures.removeAll()
-            sharedPDFView.isUserInteractionEnabled = true
-            sharedPDFView.documentView?.isUserInteractionEnabled = true
+            disabledPDFNavigationScrollViews.forEach { $0.isScrollEnabled = true }
+            disabledPDFNavigationScrollViews.removeAll()
         } else {
-            let gestures = pdfScrollViews(in: sharedPDFView).flatMap { scrollView in
+            guard disabledPDFNavigationGestures.isEmpty, disabledPDFNavigationScrollViews.isEmpty else { return }
+            view.layoutIfNeeded()
+            let scrollViews = pdfScrollViews(in: sharedPDFView)
+            disabledPDFNavigationScrollViews = scrollViews
+            disabledPDFNavigationScrollViews.forEach { $0.isScrollEnabled = false }
+            let gestures = scrollViews.flatMap { scrollView in
                 [scrollView.panGestureRecognizer, scrollView.pinchGestureRecognizer].compactMap { $0 }
             }
             disabledPDFNavigationGestures = gestures

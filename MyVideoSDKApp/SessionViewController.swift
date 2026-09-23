@@ -48,6 +48,8 @@ class SessionViewController: UIViewController {
     var annotationToolButtons: [UIButton] = []
     var annotationColorButtons: [UIButton] = []
     var disabledPDFNavigationGestures: [UIGestureRecognizer] = []
+    var disabledPDFNavigationScrollViews: [UIScrollView] = []
+    var disabledAnnotationZoomGestures: [UIGestureRecognizer] = []
     var toggleVideoBarItem: UITabBarItem = .init(title: "Stop Video", image: UIImage(systemName: "video.slash"), tag: ControlOption.toggleVideo.rawValue)
     var toggleAudioBarItem: UITabBarItem = .init(title: "Mute", image: UIImage(systemName: "mic.slash"), tag: ControlOption.toggleAudio.rawValue)
     var toggleShareBarItem: UITabBarItem = .init(title: "Share Locked", image: UIImage(systemName: "rectangle.on.rectangle.slash"), tag: ControlOption.toggleShare.rawValue)
@@ -216,8 +218,9 @@ extension SessionViewController: ZoomVideoSDKDelegate {
             } else {
                 sharedPDFView.isHidden = true
                 shareBtnStackView.isHidden = true
-                annotationPanel.isHidden = true
-                annotationStarted = false
+                if let helper = helper {
+                    resetAnnotationUI(shareHelper: helper)
+                }
             }
         } else {
             // Remote user share status changed
@@ -231,8 +234,9 @@ extension SessionViewController: ZoomVideoSDKDelegate {
                 shareAction.getShareCanvas()?.unSubscribe(with: sharerView)
                 sharerView.isHidden = true
                 shareBtnStackView.isHidden = true
-                annotationPanel.isHidden = true
-                annotationStarted = false
+                if let helper = helper {
+                    resetAnnotationUI(shareHelper: helper)
+                }
             }
         }
         
